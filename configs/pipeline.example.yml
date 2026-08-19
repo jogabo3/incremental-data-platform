@@ -1,0 +1,12 @@
+name: event_ingestion
+
+landing_path: examples/landing
+
+batch_prefix: batch_
+
+schema_contract:
+  required_fields:
+    - event_id
+    - event_type
+    - event_timestamp
+    - payload
