@@ -39,3 +39,4 @@ def test_pipeline_config_accepts_schema_contract() -> None:
 def test_schema_contract_rejects_empty_required_fields() -> None:
     with pytest.raises(ValidationError):
         SchemaContract(required_fields=[])
+
