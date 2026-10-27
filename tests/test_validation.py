@@ -114,3 +114,4 @@ def test_empty_batch_is_valid() -> None:
     assert result.status == ValidationStatus.VALID
     assert result.total_records == 0
     assert result.invalid_records == 0
+
