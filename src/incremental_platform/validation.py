@@ -80,31 +80,3 @@ def partition_records(
 
     return valid, invalid
 
-def test_partition_records_separates_invalid_data() -> None:
-    records = [
-        {
-            "event_id": "evt-001",
-            "event_type": "view",
-        },
-        {
-            "event_id": "evt-002",
-            "event_type": None,
-        },
-    ]
-
-    contract = SchemaContract(
-        required_fields=[
-            "event_id",
-            "event_type",
-        ]
-    )
-
-    valid, invalid = partition_records(
-        records,
-        contract=contract,
-    )
-
-    assert len(valid) == 1
-    assert len(invalid) == 1
-    assert valid[0]["event_id"] == "evt-001"
-    assert invalid[0]["event_id"] == "evt-002"

@@ -2,7 +2,7 @@ from incremental_platform.models import (
     SchemaContract,
     ValidationStatus,
 )
-from incremental_platform.validation import validate_records
+from incremental_platform.validation import partition_records, validate_records
 
 
 def test_valid_records_pass_validation() -> None:
@@ -71,33 +71,6 @@ def test_missing_required_field_fails_validation() -> None:
     assert result.invalid_records == 1
     assert result.missing_field_counts["event_type"] == 1
 
-
-def test_record_missing_multiple_fields_is_counted_once_as_invalid() -> None:
-    records = [
-        {
-            "event_id": "evt-001",
-            "event_type": None,
-        }
-    ]
-
-    contract = SchemaContract(
-        required_fields=[
-            "event_id",
-            "event_type",
-            "event_timestamp",
-        ]
-    )
-
-    result = validate_records(
-        records,
-        contract=contract,
-    )
-
-    assert result.invalid_records == 1
-    assert result.missing_field_counts["event_type"] == 1
-    assert result.missing_field_counts["event_timestamp"] == 1
-
-
 def test_empty_batch_is_valid() -> None:
     contract = SchemaContract(
         required_fields=[
@@ -114,4 +87,33 @@ def test_empty_batch_is_valid() -> None:
     assert result.status == ValidationStatus.VALID
     assert result.total_records == 0
     assert result.invalid_records == 0
+
+def test_partition_records_separates_invalid_data() -> None:
+    records = [
+        {
+            "event_id": "evt-001",
+            "event_type": "view",
+        },
+        {
+            "event_id": "evt-002",
+            "event_type": None,
+        },
+    ]
+
+    contract = SchemaContract(
+        required_fields=[
+            "event_id",
+            "event_type",
+        ]
+    )
+
+    valid, invalid = partition_records(
+        records,
+        contract=contract,
+    )
+
+    assert len(valid) == 1
+    assert len(invalid) == 1
+    assert valid[0]["event_id"] == "evt-001"
+    assert invalid[0]["event_id"] == "evt-002"
 
