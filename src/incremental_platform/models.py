@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -11,20 +12,17 @@ class PipelineStatus(StrEnum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
 
-
 class BatchStatus(StrEnum):
     DISCOVERED = "discovered"
     PROCESSING = "processing"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
 
-
 class BatchDescriptor(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     batch_id: str = Field(min_length=1)
     location: str = Field(min_length=1)
-
 
 class PipelineState(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -40,7 +38,6 @@ class PipelineState(BaseModel):
 class ValidationStatus(StrEnum):
     VALID = "valid"
     INVALID = "invalid"
-
 
 class ValidationResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -60,7 +57,6 @@ class SchemaContract(BaseModel):
 
     required_fields: list[str] = Field(min_length=1)
 
-
 class PipelineConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -74,7 +70,6 @@ class PipelineRunStatus(StrEnum):
     FAILED = "failed"
     NO_DATA = "no_data"
 
-
 class PipelineRunResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -86,4 +81,23 @@ class PipelineRunResult(BaseModel):
     valid_records: int = Field(default=0, ge=0)
     invalid_records: int = Field(default=0, ge=0)
     error: str | None = None
+
+class CanonicalEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    entity_id: str = Field(min_length=1)
+    event_id: str = Field(min_length=1)
+    event_type: str = Field(min_length=1)
+    event_timestamp: datetime
+    batch_id: str = Field(min_length=1)
+    payload: dict[str, Any]
+    record_hash: str = Field(min_length=1)
+
+class TransformationResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    events: list[CanonicalEvent]
+    current_entities: list[CanonicalEvent]
+    input_count: int = Field(ge=0)
+    current_entity_count: int = Field(ge=0)
 
