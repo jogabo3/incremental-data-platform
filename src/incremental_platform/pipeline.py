@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -11,7 +12,12 @@ from incremental_platform.models import (
     PipelineRunResult,
     PipelineRunStatus,
 )
+from incremental_platform.publisher import PublishingError, SqlitePublisher
 from incremental_platform.state import JsonPipelineStateStore
+from incremental_platform.transforms import (
+    TransformationError,
+    transform_batch,
+)
 from incremental_platform.validation import validate_records
 
 
@@ -20,14 +26,20 @@ class PipelineExecutionError(RuntimeError):
 
 
 class IncrementalPipeline:
-    """Coordinates discovery, validation, and restart-safe state."""
+    """Coordinates incremental processing and restart-safe publishing."""
 
     def __init__(
         self,
         *,
         state_store: JsonPipelineStateStore | None = None,
+        publisher: SqlitePublisher | None = None,
+        after_publish: Callable[[], None] | None = None,
     ) -> None:
         self.state_store = state_store or JsonPipelineStateStore()
+        self.publisher = publisher or SqlitePublisher(
+            ".pipeline-state/platform.db"
+        )
+        self.after_publish = after_publish
 
     def run(
         self,
@@ -54,7 +66,50 @@ class IncrementalPipeline:
 
         try:
             records = self._load_records(batch.location)
-        except PipelineExecutionError as exc:
+
+            validation = validate_records(
+                records,
+                contract=config.schema_contract,
+            )
+
+            if not validation.passed:
+                raise PipelineExecutionError(
+                    f"Batch '{batch.batch_id}' failed schema validation: "
+                    f"{validation.invalid_records} invalid record(s)"
+                )
+
+            transformed = transform_batch(
+                records,
+                batch_id=batch.batch_id,
+            )
+
+            self.publisher.publish(transformed.events)
+
+            if self.after_publish is not None:
+                self.after_publish()
+
+            self.state_store.mark_success(
+                pipeline_name=config.name,
+                run_id=effective_run_id,
+                watermark=batch.batch_id,
+                row_count=transformed.input_count,
+            )
+
+            return PipelineRunResult(
+                run_id=effective_run_id,
+                pipeline_name=config.name,
+                status=PipelineRunStatus.SUCCEEDED,
+                batch_id=batch.batch_id,
+                total_records=transformed.input_count,
+                valid_records=transformed.input_count,
+                invalid_records=0,
+            )
+
+        except (
+            PipelineExecutionError,
+            TransformationError,
+            PublishingError,
+        ) as exc:
             self.state_store.mark_failure(
                 pipeline_name=config.name,
                 run_id=effective_run_id,
@@ -68,51 +123,6 @@ class IncrementalPipeline:
                 batch_id=batch.batch_id,
                 error=str(exc),
             )
-
-        validation = validate_records(
-            records,
-            contract=config.schema_contract,
-        )
-
-        if not validation.passed:
-            error = (
-                f"Batch '{batch.batch_id}' failed schema validation: "
-                f"{validation.invalid_records} invalid record(s)"
-            )
-
-            self.state_store.mark_failure(
-                pipeline_name=config.name,
-                run_id=effective_run_id,
-                error=error,
-            )
-
-            return PipelineRunResult(
-                run_id=effective_run_id,
-                pipeline_name=config.name,
-                status=PipelineRunStatus.FAILED,
-                batch_id=batch.batch_id,
-                total_records=validation.total_records,
-                valid_records=validation.valid_records,
-                invalid_records=validation.invalid_records,
-                error=error,
-            )
-
-        self.state_store.mark_success(
-            pipeline_name=config.name,
-            run_id=effective_run_id,
-            watermark=batch.batch_id,
-            row_count=validation.total_records,
-        )
-
-        return PipelineRunResult(
-            run_id=effective_run_id,
-            pipeline_name=config.name,
-            status=PipelineRunStatus.SUCCEEDED,
-            batch_id=batch.batch_id,
-            total_records=validation.total_records,
-            valid_records=validation.valid_records,
-            invalid_records=0,
-        )
 
     @staticmethod
     def _load_records(
