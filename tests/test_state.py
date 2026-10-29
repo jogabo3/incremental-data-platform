@@ -1,7 +1,10 @@
 from pathlib import Path
+from unittest.mock import patch
+
+import pytest
 
 from incremental_platform.models import PipelineStatus
-from incremental_platform.state import JsonPipelineStateStore
+from incremental_platform.state import JsonPipelineStateStore, StateStoreError
 
 
 def test_missing_state_returns_default_state(
@@ -110,3 +113,41 @@ def test_state_persists_across_store_instances(
     assert state.watermark == "003"
     assert state.last_run_id == "run-001"
     assert state.last_row_count == 250
+
+def test_failed_atomic_replace_preserves_previous_state(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / "state"
+    store = JsonPipelineStateStore(state_dir)
+
+    store.mark_success(
+        pipeline_name="event_ingestion",
+        run_id="run-001",
+        watermark="001",
+        row_count=100,
+    )
+
+    with patch(
+        "incremental_platform.state.os.replace",
+        side_effect=OSError("simulated filesystem failure"),
+    ), pytest.raises(
+        StateStoreError,
+        match="Unable to save state",
+    ):
+        store.mark_success(
+            pipeline_name="event_ingestion",
+            run_id="run-002",
+            watermark="002",
+            row_count=200,
+        )
+
+    recovered = JsonPipelineStateStore(state_dir).get(
+        "event_ingestion"
+    )
+
+    assert recovered.watermark == "001"
+    assert recovered.last_run_id == "run-001"
+    assert recovered.last_row_count == 100
+
+    assert list(state_dir.glob("*.tmp")) == []
+

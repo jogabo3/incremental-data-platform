@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+import re
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -46,16 +49,37 @@ class JsonPipelineStateStore:
             persisted_state.pipeline_name
         )
 
+        temporary_path: Path | None = None
+
         try:
-            state_path.write_text(
-                persisted_state.model_dump_json(indent=2),
+            with tempfile.NamedTemporaryFile(
+                mode="w",
                 encoding="utf-8",
-            )
+                dir=self.base_dir,
+                prefix=f".{state_path.stem}-",
+                suffix=".tmp",
+                delete=False,
+            ) as temporary_file:
+                temporary_path = Path(temporary_file.name)
+
+                temporary_file.write(
+                    persisted_state.model_dump_json(indent=2)
+                )
+
+                temporary_file.flush()
+                os.fsync(temporary_file.fileno())
+
+            os.replace(temporary_path, state_path)
+
         except OSError as exc:
             raise StateStoreError(
                 f"Unable to save state for pipeline "
                 f"'{persisted_state.pipeline_name}': {exc}"
             ) from exc
+
+        finally:
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)
 
         return persisted_state
 
@@ -101,4 +125,10 @@ class JsonPipelineStateStore:
         return self.save(updated)
 
     def _state_path(self, pipeline_name: str) -> Path:
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", pipeline_name):
+            raise StateStoreError(
+                "Pipeline names must contain only letters, "
+                "numbers, underscores, or hyphens"
+            )
+
         return self.base_dir / f"{pipeline_name}.json"
