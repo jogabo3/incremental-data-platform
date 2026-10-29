@@ -1,0 +1,16 @@
+[
+  {
+    "entity_id": "customer-A",
+    "event_id": "evt-003",
+    "event_type": "updated",
+    "event_timestamp": "2026-10-29T11:00:00Z",
+    "payload": {"status": "active"}
+  },
+  {
+    "entity_id": "customer-C",
+    "event_id": "evt-004",
+    "event_type": "created",
+    "event_timestamp": "2026-10-29T11:10:00Z",
+    "payload": {"status": "new"}
+  }
+]

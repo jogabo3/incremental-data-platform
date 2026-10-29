@@ -1,0 +1,11 @@
+name: operational_demo
+landing_path: examples/demo_landing
+batch_prefix: batch_
+
+schema_contract:
+  required_fields:
+    - entity_id
+    - event_id
+    - event_type
+    - event_timestamp
+    - payload
