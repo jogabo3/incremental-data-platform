@@ -8,6 +8,7 @@ from incremental_platform.models import (
     SchemaContract,
 )
 from incremental_platform.pipeline import IncrementalPipeline
+from incremental_platform.publisher import SqlitePublisher
 from incremental_platform.state import JsonPipelineStateStore
 
 
@@ -31,8 +32,11 @@ def make_config(landing: Path) -> PipelineConfig:
         landing_path=str(landing),
         schema_contract=SchemaContract(
             required_fields=[
+                "entity_id",
                 "event_id",
+                "event_type",
                 "event_timestamp",
+                "payload",
             ]
         ),
     )
@@ -48,10 +52,14 @@ def test_pipeline_processes_next_batch_and_advances_watermark(
         landing,
         "001",
         [
-            {
-                "event_id": "evt-001",
-                "event_timestamp": "2026-09-22T10:00:00Z",
+            {   
+                    "entity_id": "customer-A",
+                    "event_id": "evt-001",
+                    "event_type": "update",
+                    "event_timestamp": "2026-10-27T10:00:00Z",
+                    "payload": {"status": "active"},
             }
+            
         ],
     )
 
@@ -82,8 +90,11 @@ def test_failed_batch_does_not_advance_watermark(
         "001",
         [
             {
-                "event_id": "evt-001",
-                "event_timestamp": "2026-09-22T10:00:00Z",
+                    "entity_id": "customer-A",
+                    "event_id": "evt-001",
+                    "event_type": "update",
+                    "event_timestamp": "2026-10-27T10:00:00Z",
+                    "payload": {"status": "active"},
             }
         ],
     )
@@ -114,6 +125,12 @@ def test_failed_batch_does_not_advance_watermark(
     assert state.watermark == "001"
     assert state.last_status == PipelineStatus.FAILED
 
+    pipeline = IncrementalPipeline(
+            state_store=store,
+            publisher=SqlitePublisher(tmp_path / "platform.db"),
+        )
+
+
 def test_fixed_failed_batch_is_reprocessed(
     tmp_path: Path,
 ) -> None:
@@ -125,8 +142,11 @@ def test_fixed_failed_batch_is_reprocessed(
         "001",
         [
             {
-                "event_id": "evt-001",
-                "event_timestamp": "2026-09-22T10:00:00Z",
+                 "entity_id": "customer-A",
+                 "event_id": "evt-001",
+                 "event_type": "update",
+                 "event_timestamp": "2026-10-27T10:00:00Z",
+                 "payload": {"status": "active"},
             }
         ],
     )
@@ -160,8 +180,11 @@ def test_fixed_failed_batch_is_reprocessed(
         json.dumps(
             [
                 {
-                    "event_id": "evt-002",
-                    "event_timestamp": "2026-09-22T10:05:00Z",
+                    "entity_id": "customer-A",
+                    "event_id": "evt-001",
+                    "event_type": "update",
+                    "event_timestamp": "2026-10-27T10:00:00Z",
+                    "payload": {"status": "active"},
                 }
             ]
         ),
@@ -181,6 +204,12 @@ def test_fixed_failed_batch_is_reprocessed(
     assert state.watermark == "002"
     assert state.last_status == PipelineStatus.SUCCEEDED
 
+    pipeline = IncrementalPipeline(
+            state_store=store,
+            publisher=SqlitePublisher(tmp_path / "platform.db"),
+        )
+    
+
 def test_pipeline_returns_no_data_when_caught_up(
     tmp_path: Path,
 ) -> None:
@@ -192,8 +221,11 @@ def test_pipeline_returns_no_data_when_caught_up(
         "001",
         [
             {
+                "entity_id": "customer-A",
                 "event_id": "evt-001",
-                "event_timestamp": "2026-09-22T10:00:00Z",
+                "event_type": "update",
+                "event_timestamp": "2026-10-27T10:00:00Z",
+                "payload": {"status": "active"},
             }
         ],
     )
@@ -215,3 +247,8 @@ def test_pipeline_returns_no_data_when_caught_up(
     state = store.get("event_ingestion")
 
     assert state.watermark == "001"
+
+    pipeline = IncrementalPipeline(
+        state_store=store,
+        publisher=SqlitePublisher(tmp_path / "platform.db"),
+    )
